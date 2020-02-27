@@ -3,6 +3,9 @@ import tensorflow as tf
 import cv2 as cv
 from scipy.spatial import distance
 
+from nms import non_max_suppression
+
+nms= "False"
 COCO_CLASSES_LIST = [
     'unlabeled',
     'person',
@@ -97,6 +100,29 @@ COCO_CLASSES_LIST = [
     'toothbrush',
 ]
 
+def edit_frame(img,x_center, y_center,x,y,right,bottom,COCO_CLASSES_LIST,clr,box_clr):
+    cv.circle(img, (x_center, y_center), 1, (0, 255, 0), 1)
+    if box_clr=="green":
+        cv.rectangle(img, (int(x), int(y)), (int(right), int(bottom)), (125, 255, 51), thickness=2)
+    else:
+        cv.rectangle(img, (int(x), int(y)), (int(right), int(bottom)), (0, 0, 255), thickness=2)
+
+    cv.putText(img, str(COCO_CLASSES_LIST + " " + clr), (int(x), int(y)), cv.FONT_HERSHEY_PLAIN, 1.0,
+               (125, 255, 51), 1)
+    return img
+
+def find_clr(frame, x,y):
+    b, g, r = (frame[x, y])
+    if b > 240 and g > 240 and r > 240:
+        clr = "white"
+    elif (b < 65 and g < 65 and r < 65):
+        clr = "black"
+    else:
+        clr = " "
+
+    return clr
+
+
 def process_frame(frame,car_count,detected_points,frame_cnt):
     # Read and preprocess an image.
     img = frame.copy()
@@ -112,15 +138,22 @@ def process_frame(frame,car_count,detected_points,frame_cnt):
                     sess.graph.get_tensor_by_name('detection_classes:0')],
                    feed_dict={'image_tensor:0': inp.reshape(1, inp.shape[0], inp.shape[1], 3)})
 
-    # print(out[1])
+    if nms == "False":
+        boxes = out[2][0]
+        scores = out[1][0]
+        classes = out[3][0]
+    else:
+        boxes, scores, classes = non_max_suppression(out[2][0], out[1][0], out[3][0], cols, rows)
+
     # Visualize detected bounding boxes.
-    num_detections = int(out[0][0])
+    num_detections = len(classes)
+
     for i in range(num_detections):
-        classId = int(out[3][0][i])
+        classId = int(classes[i])
         if classId is not None:
-            score = float(out[1][0][i])
-            bbox = [float(v) for v in out[2][0][i]]
-            if score > 0.6:
+            score = float(scores[i])
+            bbox = [float(v) for v in boxes[i]]
+            if score > 0.4:
                 x = bbox[1] * cols
                 y = bbox[0] * rows
                 right = bbox[3] * cols
@@ -128,40 +161,24 @@ def process_frame(frame,car_count,detected_points,frame_cnt):
 
                 x_center = int((x + right)/2)
                 y_center = int((y + bottom)/2)
+
                 # straight line
                 cv.line(img,(100,250),(640,250),(0,0,255),1)
-                clr = ""
-                b, g, r = (frame[y_center, x_center])
-                print(b, g, r)
-                if b > 240 and g > 240 and r > 240:
-                    clr = "white"
-                elif (b < 65 and g < 65 and r < 65):
-                    clr = "black"
-                else:
-                    clr = " "
-                print(clr)
+                clr = find_clr(frame,y_center, x_center)
+
                 if y_center <= 250:
-                    cv.circle(img, (x_center, y_center), 1, (0, 255, 0), 1)
-                    cv.rectangle(img, (int(x), int(y)), (int(right), int(bottom)), (125, 255, 51), thickness=2)
-                    cv.putText(img, str(COCO_CLASSES_LIST[classId] + " " + clr), (int(x), int(y)), cv.FONT_HERSHEY_PLAIN, 1.0,
-                               (125, 255, 51), 1)
-
+                    img = edit_frame(img,x_center, y_center,x,y,right,bottom,COCO_CLASSES_LIST[classId],clr,box_clr="green")
                 else:
-
-                    # print(x_center,y_center)
-
                     if y_center == 251:
                         if len(detected_points) != 0:
-                            print(detected_points)
-                            print(frame_cnt)
+
                             d = distance.euclidean((x_center,y_center), detected_points[0])
-                            # print(right,bottom)
+
                             if d > 10 and (right < 630 and bottom < 350)\
                                     and frame_cnt - detected_points[1] > 10:
                                 detected_points = []
                                 detected_points.append((x_center, y_center))
                                 detected_points.append(frame_cnt)
-
                                 car_count += 1
                         else:
                             detected_points.append((x_center, y_center))
@@ -169,21 +186,13 @@ def process_frame(frame,car_count,detected_points,frame_cnt):
                             car_count += 1
 
 
-                        print(car_count)
-
-                        print(clr)
-                        print("---")
-                    cv.circle(img, (x_center, y_center), 1, (0, 255, 0), 1)
-                    cv.rectangle(img, (int(x), int(y)), (int(right), int(bottom)), (0, 0, 255), thickness=2)
-                    cv.putText(img, str(COCO_CLASSES_LIST[classId] + " " + clr), (int(x), int(y)), cv.FONT_HERSHEY_PLAIN, 1.0,
-                               (0, 0, 255), 1)
+                    img = edit_frame(img,x_center, y_center,x,y,right,bottom,COCO_CLASSES_LIST[classId],clr,box_clr="red")
 
                 cv.putText(img, str("car crossing red line: " + str(car_count)), (300, 25), cv.FONT_HERSHEY_PLAIN, 1.0,
                            (0, 0, 255), 1)
 
                 cv.imwrite("out_img.jpg", img)
-        # print(detected_points)
-        # print(car_count)
+
     return img,car_count, detected_points
 
 def process_video():
@@ -197,7 +206,7 @@ def process_video():
     detected_points = []
     while (1):
         ret, frame = cap.read()
-        # print("frame#:", frame_cnt)
+        print("frame#:", frame_cnt)
 
         if ret == True:
             # print(frame.shape)
