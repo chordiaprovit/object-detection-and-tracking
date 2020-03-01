@@ -100,8 +100,13 @@ COCO_CLASSES_LIST = [
     'toothbrush',
 ]
 
+
+
+
 def edit_frame(img,x_center, y_center,x,y,right,bottom,COCO_CLASSES_LIST,clr,box_clr):
     cv.circle(img, (x_center, y_center), 1, (0, 255, 0), 1)
+    # cv.putText(img, str((x_center, y_center)), (int(x_center+2),int(y_center+2)), cv.FONT_HERSHEY_PLAIN, 1.0,
+    #            (125, 255, 51), 1)
     if box_clr=="green":
         cv.rectangle(img, (int(x), int(y)), (int(right), int(bottom)), (125, 255, 51), thickness=2)
     else:
@@ -123,9 +128,10 @@ def find_clr(frame, x,y):
     return clr
 
 
-def process_frame(frame,car_count,detected_points,frame_cnt):
+def process_frame(frame,car_count,car_count_up,detected_points_dwn,detected_points_up,frame_cnt):
     # Read and preprocess an image.
     img = frame.copy()
+
     rows = img.shape[0]
     cols = img.shape[1]
     inp = cv.resize(img, (300, 300))
@@ -163,37 +169,70 @@ def process_frame(frame,car_count,detected_points,frame_cnt):
                 y_center = int((y + bottom)/2)
 
                 # straight line
-                cv.line(img,(100,250),(640,250),(0,0,255),1)
-                clr = find_clr(frame,y_center, x_center)
+                cv.line(img, (210, 250), (590, 250), (0, 0, 255), 1) #for downstream
+                cv.line(img, (400, 200), (620, 200), (255, 0, 0), 1) #for upstream
 
+                if ((bottom-y)/ (right -x) > 0.8):
+                    clr = find_clr(frame,y_center, x_center)
+                else:
+                    clr = ""
+                #for upstream
+                if y_center > 200 and x_center > 400:
+                    img = edit_frame(img, x_center, y_center, x, y, right, bottom, COCO_CLASSES_LIST[classId], clr,
+                                     box_clr="green")
+                else:
+                    if y_center == 199 and x_center > 400:
+                        print("true")
+                        if len(detected_points_up) != 0:
+
+                            d = distance.euclidean(detected_points_up[0], (x_center,y_center))
+                            print(d)
+                            if d > 5 \
+                                    and frame_cnt - detected_points_up[1] > 10:
+                                detected_points_up = []
+                                detected_points_up.append((x_center, y_center))
+                                detected_points_up.append(frame_cnt)
+                                car_count_up += 1
+                        else:
+                            detected_points_up.append((x_center, y_center))
+                            detected_points_up.append(frame_cnt)
+                            car_count_up += 1
+
+
+                    img = edit_frame(img,x_center, y_center,x,y,right,bottom,COCO_CLASSES_LIST[classId],clr,box_clr="red")
+
+
+                #for downstream
                 if y_center <= 250:
                     img = edit_frame(img,x_center, y_center,x,y,right,bottom,COCO_CLASSES_LIST[classId],clr,box_clr="green")
                 else:
                     if y_center == 251:
-                        if len(detected_points) != 0:
+                        if len(detected_points_dwn) != 0:
 
-                            d = distance.euclidean((x_center,y_center), detected_points[0])
+                            d = distance.euclidean((x_center,y_center), detected_points_dwn[0])
 
-                            if d > 10 and (right < 630 and bottom < 350)\
-                                    and frame_cnt - detected_points[1] > 10:
-                                detected_points = []
-                                detected_points.append((x_center, y_center))
-                                detected_points.append(frame_cnt)
+                            if d > 3 and (right < 630 and bottom < 350)\
+                                    and frame_cnt - detected_points_dwn[1] > 10:
+                                detected_points_dwn = []
+                                detected_points_dwn.append((x_center, y_center))
+                                detected_points_dwn.append(frame_cnt)
                                 car_count += 1
                         else:
-                            detected_points.append((x_center, y_center))
-                            detected_points.append(frame_cnt)
+                            detected_points_dwn.append((x_center, y_center))
+                            detected_points_dwn.append(frame_cnt)
                             car_count += 1
 
 
                     img = edit_frame(img,x_center, y_center,x,y,right,bottom,COCO_CLASSES_LIST[classId],clr,box_clr="red")
 
-                cv.putText(img, str("car crossing red line: " + str(car_count)), (300, 25), cv.FONT_HERSHEY_PLAIN, 1.0,
+                cv.putText(img, str("vehicles crossing red line (down): " + str(car_count)), (280, 25), cv.FONT_HERSHEY_PLAIN, 1.0,
                            (0, 0, 255), 1)
+                cv.putText(img, str("vehicles crossing blue line(up): " + str(car_count_up)), (280, 35), cv.FONT_HERSHEY_PLAIN, 1.0,
+                           (255, 0, 0), 1)
 
                 cv.imwrite("out_img.jpg", img)
 
-    return img,car_count, detected_points
+    return img,car_count,car_count_up, detected_points_dwn,detected_points_up
 
 def process_video():
     cap = cv.VideoCapture('slow.mp4')
@@ -202,15 +241,18 @@ def process_video():
     height, width, layers = frame.shape
     out = cv.VideoWriter("output.mp4", fourcc, 40, (width, height))
     car_count = 0
+    car_count_up = 0
     frame_cnt = 1
-    detected_points = []
+    detected_points_dwn = []
+    detected_points_up = []
     while (1):
         ret, frame = cap.read()
         print("frame#:", frame_cnt)
 
         if ret == True:
             # print(frame.shape)
-            out_frame,car_count,detected_points = process_frame(frame,car_count,detected_points,frame_cnt)
+            out_frame,car_count,car_count_up,detected_points_dwn,detected_points_up\
+                = process_frame(frame,car_count,car_count_up,detected_points_dwn,detected_points_up,frame_cnt)
             out.write(out_frame)
         else:
             break
