@@ -119,7 +119,7 @@ def process_live_video():
             score = float(out[1][0][i])
             # print(score)
             bbox = [float(v) for v in out[2][0][i]]
-            if score > 0.4:
+            if score > 0.6:
                 # print(bbox)
                 x = bbox[1] * cols
                 y = bbox[0] * rows
