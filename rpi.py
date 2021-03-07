@@ -5,6 +5,7 @@ from PIL.ImageFont import ImageFont
 from object_detection.utils import label_map_util
 import PIL.ImageFont as ImageFont
 from PIL import ImageDraw
+import smtplib
 
 from object_detection.utils import visualization_utils as vis_util
 
@@ -21,18 +22,20 @@ def create_category_index(label_path='labelmap.txt'):
     f.close()
     return category_index
 
-def draw_bounding_box_on_image(image,ymin,xmin,ymax,xmax ):
+def draw_bounding_box_on_image(image,xmin,ymin,xmax,ymax):
   """Adds a bounding box to an image."""
-  print(image.shape)
+  # print(image.shape)
   im_width, im_height,im_depth = image.shape
-  left, right, top, bottom = int(xmin * im_width), \
-                             int(xmax * im_height),\
-                             int(ymin * im_width), \
-                             int(ymax * im_height)
+  x, xmax, y, ymax = int(xmin * im_width), \
+                     int(xmax * im_height),\
+                     int(ymin * im_width), \
+                     int(ymax * im_height)
 
-  print("========>",left, right, top, bottom)
-  image =cv2.rectangle(image, (left, top), (right, bottom), (255,0,0), 2)
-
+  # print("========>",x, xmax, y, ymax)
+  x_center = int(x+xmax/2)
+  y_center = int(y+ymax/2)
+  image =cv2.rectangle(image, (x, y), (xmax, ymax), (255,0,0), 2)
+  image =cv2.circle(image,(x_center,y_center),5,(255,126,126))
   return image
 
 def process_live_video(interpreter):
@@ -48,7 +51,8 @@ def process_live_video(interpreter):
         # Capture frame-by-frame
         ret, frame = cap.read()
 
-        frame = cv2.rectangle(frame,(100,0),(500,0),(0,0,255),5)
+        # frame = cv2.line(frame,(250,450),(550,500),(0,0,255),5)
+        # frame = cv2.rectangle(frame, (250, 450), (550, 500), (0, 0, 255), 5)
         if ret:
             img_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             img_rgb = cv2.resize(img_rgb, (300, 300))
@@ -75,26 +79,33 @@ def process_live_video(interpreter):
                 min_score_thresh=threshold,
                 line_thickness=10,
                 agnostic_mode=False)
-
             boxes = output_dict['detection_boxes']
+
             # get all boxes from an array
             max_boxes_to_draw = boxes.shape[0]
+
             # get scores to get a threshold
             scores = output_dict['detection_scores']
+
             # this is set as a default but feel free to adjust it to your needs
             min_score_thresh = threshold
+
             # iterate over all objects found
             for i in range(min(max_boxes_to_draw, boxes.shape[0])):
                 if scores is None or scores[i] > min_score_thresh:
+
                     # boxes[i] is the box which will be drawn
                     index= output_dict['detection_classes'][i]
                     class_name = category_index[output_dict['detection_classes'][i]]['name']
-                    print("This box is gonna get used", boxes[i], scores[i] *100, class_name)
+                    # print("This box is gonna get used", boxes[i], scores[i] *100, class_name)
+                    frame = draw_bounding_box_on_image(frame, boxes[i][0], boxes[i][1], boxes[i][2], boxes[i][3])
+                    print("saw "+ class_name)
+
                     classes_found.append(class_name)
-                    frame = draw_bounding_box_on_image(frame,boxes[i][0],boxes[i][1],boxes[i][2],boxes[i][3])
 
 
-            cv2.imshow('object_detection', cv2.resize(frame, (320, 320)))
+
+            cv2.imshow('object_detection', cv2.resize(frame, (640, 640)))
             if cv2.waitKey(25) & 0xFF == ord('q'):
                 cap.release()
                 cv2.destroyAllWindows()
