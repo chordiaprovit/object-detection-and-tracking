@@ -8,3 +8,4 @@ To detect if the car has crossed the line, center of detected car is used. Whene
 
 Issues and resolution:
 However, due to instable detetion of cars, the centers keeps on getting moved and sometimes the car was counted twice. To overcome that; frame number of deteted car and x,y coordinates are tracked frame by frame so that a car is not counted twice. 
+rpi.py uses version greater than tensorflow 2. This is used to do object detectin using raspberry pi. The objects are detected fine,but due to limited processing power of raspberrypi, it hangs freuently.
